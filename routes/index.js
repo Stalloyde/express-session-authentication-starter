@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const passport = require('passport');
-const passwordUtils = require('../lib/passwordUtils');
+const {isAuth, isAdmin} = require('./Authenticate')
+const genPassword= require('../lib/passwordUtils').genPassword;
 const connection = require('../config/database');
 const User = connection.models.User;
 
@@ -9,10 +10,15 @@ const User = connection.models.User;
  */
 
  // TODO
- router.post('/login', (req, res, next) => {});
+ router.post('/login', passport.authenticate('local', {failureRedirect: '/login-failure', successRedirect: '/login-success'}));
 
  // TODO
- router.post('/register', (req, res, next) => {});
+ router.post('/register', async (req, res, next) => {
+    const password = genPassword(req.body.password)
+    const user = new User({username:req.body.username, hash: password.hash, salt: password.salt, admin: true} )
+    await user.save()
+    res.redirect('/login')
+ });
 
 
  /**
@@ -47,20 +53,19 @@ router.get('/register', (req, res, next) => {
     
 });
 
+
 /**
  * Lookup how to authenticate users on routes with Local Strategy
  * Google Search: "How to use Express Passport Local Strategy"
  * 
  * Also, look up what behaviour express session has without a maxage set
  */
-router.get('/protected-route', (req, res, next) => {
-    
-    // This is how you check if a user is authenticated and protect a route.  You could turn this into a custom middleware to make it less redundant
-    if (req.isAuthenticated()) {
-        res.send('<h1>You are authenticated</h1><p><a href="/logout">Logout and reload</a></p>');
-    } else {
-        res.send('<h1>You are not authenticated</h1><p><a href="/login">Login</a></p>');
-    }
+router.get('/protected-route', isAuth, (req, res, next) => {
+    res.send('<h1>You are authenticated</h1><p><a href="/logout">Logout and reload</a></p>');
+});
+
+router.get('/admin-route', isAdmin, (req, res, next) => {
+    res.send('<h1>You are an Admin</h1><p><a href="/logout">Logout and reload</a></p>');
 });
 
 // Visiting this route logs the user out
@@ -69,8 +74,12 @@ router.get('/logout', (req, res, next) => {
     res.redirect('/protected-route');
 });
 
-router.get('/login-success', (req, res, next) => {
-    res.send('<p>You successfully logged in. --> <a href="/protected-route">Go to protected route</a></p>');
+router.get('/login-success', isAuth, (req, res, next) => {
+    if (req.user.admin) {
+        res.send('<p>You successfully logged in. --> <a href="/protected-route">Go to protected route</a> <a href="/admin-route">Go to admin route</a></p>');
+    } else {
+        res.send('<p>You successfully logged in. --> <a href="/protected-route">Go to protected route</a></p>');
+    }
 });
 
 router.get('/login-failure', (req, res, next) => {
